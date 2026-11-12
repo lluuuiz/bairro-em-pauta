@@ -14,5 +14,6 @@ urlpatterns = [
     path("auth/login/", obtain_auth_token),
     path("me/", views.MeView.as_view()),
     path("map/", views.MapItemsView.as_view()),
+    path("notices/", views.NoticesView.as_view()),
     path("", include(router.urls)),
 ]
