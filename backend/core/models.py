@@ -128,21 +128,50 @@ class Flag(models.Model):
 
 
 class NewsItem(models.Model):
+    """Notícia, pauta de telejornal ou alerta cadastrados pela redação."""
     NOTICIA, PAUTA, ALERTA = "noticia", "pauta", "alerta"
-    KINDS = [(NOTICIA, "Notícia"), (PAUTA, "Pauta"), (ALERTA, "Alerta")]
+    KINDS = [(NOTICIA, "Notícia"), (PAUTA, "Pauta de telejornal"), (ALERTA, "Alerta")]
 
-    kind = models.CharField(max_length=10, choices=KINDS, default=NOTICIA)
-    title = models.CharField(max_length=160)
-    category = models.CharField(max_length=40, blank=True)
-    neighborhood = models.ForeignKey(Neighborhood, null=True, blank=True, on_delete=models.SET_NULL)
-    latitude = models.FloatField()
-    longitude = models.FloatField()
+    kind = models.CharField("tipo", max_length=10, choices=KINDS, default=NOTICIA)
+    title = models.CharField("título", max_length=160)
+    category = models.CharField("categoria", max_length=40, blank=True)
+    neighborhood = models.ForeignKey(Neighborhood, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="bairro")
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
     is_live = models.BooleanField("ao vivo", default=False)
+    program = models.CharField("telejornal", max_length=80, blank=True)
+    airs_at = models.DateTimeField("vai ao ar em", null=True, blank=True)
+    event = models.OneToOneField("Event", null=True, blank=True, on_delete=models.SET_NULL, editable=False)
     published_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         ordering = ["-published_at"]
         verbose_name = "notícia da redação"
+        verbose_name_plural = "notícias da redação"
+
+    def __str__(self):
+        return self.title
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if not self.neighborhood and (self.latitude is None or self.longitude is None):
+            raise ValidationError("Escolha um bairro ou informe latitude e longitude.")
+
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        if self.neighborhood and (self.latitude is None or self.longitude is None):
+            self.latitude, self.longitude = self.neighborhood.latitude, self.neighborhood.longitude
+        # Pauta com horário entra sozinha na Agenda.
+        if self.kind == self.PAUTA and self.airs_at and self.event_id is None:
+            self.event = Event.objects.create(
+                title=self.title, category=self.category or "Telejornal", neighborhood=self.neighborhood,
+                starts_at=self.airs_at, source=Event.REDACAO,
+            )
+        super().save(*args, **kwargs)
+        # Pautas e alertas avisam quem segue o bairro.
+        if is_new and self.neighborhood and self.kind in (self.PAUTA, self.ALERTA):
+            user_ids = Follow.objects.filter(neighborhood=self.neighborhood).values_list("user_id", flat=True)
+            Notice.objects.bulk_create([Notice(user_id=uid, news=self) for uid in user_ids])
 
 
 class Event(models.Model):
@@ -166,3 +195,26 @@ class Reminder(models.Model):
 
     class Meta:
         unique_together = ("user", "event")
+
+
+class Follow(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="follows")
+    neighborhood = models.ForeignKey(Neighborhood, on_delete=models.CASCADE, related_name="followers")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "neighborhood")
+        verbose_name = "bairro seguido"
+        verbose_name_plural = "bairros seguidos"
+
+
+class Notice(models.Model):
+    """Aviso para quem segue um bairro quando ele vira pauta."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notices")
+    news = models.ForeignKey(NewsItem, on_delete=models.CASCADE, related_name="notices")
+    read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "aviso"

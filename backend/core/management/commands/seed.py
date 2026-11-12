@@ -5,7 +5,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from core import services
-from core.models import Confirmation, Event, Neighborhood, NewsItem, Report, get_profile
+from core.models import Confirmation, Event, Follow, Neighborhood, NewsItem, Report, get_profile
 
 User = get_user_model()
 
@@ -66,18 +66,18 @@ class Command(BaseCommand):
         cu = hoods["Cidade Universitária"]
         NewsItem.objects.create(kind="noticia", title="Equipe acompanha interdição de via perto da UFPE", category="Ao vivo",
                                 neighborhood=cu, latitude=-8.0480, longitude=-34.9520, is_live=True, published_at=now - timedelta(minutes=8))
+        today = timezone.localtime().replace(minute=0, second=0, microsecond=0)
         NewsItem.objects.create(kind="pauta", title="Reportagem sobre obras de drenagem", category="Serviços",
-                                neighborhood=hoods["Várzea"], latitude=-8.0415, longitude=-34.9585)
+                                neighborhood=hoods["Várzea"], program="Telejornal local",
+                                airs_at=today.replace(hour=9, minute=30))
         NewsItem.objects.create(kind="alerta", title="Previsão de chuva forte para o fim da tarde", category="Alerta",
                                 neighborhood=cu, latitude=-8.0540, longitude=-34.9470)
 
-        today = timezone.localtime().replace(minute=0, second=0, microsecond=0)
-        Event.objects.create(title="Reportagem sobre obras de drenagem", category="Serviços", neighborhood=hoods["Várzea"],
-                             starts_at=today.replace(hour=9, minute=30), source=Event.REDACAO)
         Event.objects.create(title="Feira de artesanato na praça do bairro", category="Cultura", neighborhood=hoods["Iputinga"],
                              starts_at=today.replace(hour=14), source=Event.REDACAO)
         Event.objects.create(title="Moradores debatem o transporte da região", category="Comunidade", neighborhood=cu,
                              starts_at=today.replace(hour=19, minute=15), source=Event.COMUNIDADE)
         Event.objects.create(title="Boletim do trânsito nos principais corredores", category="Trânsito", neighborhood=cu,
                              starts_at=(today + timedelta(days=1)).replace(hour=7), source=Event.REDACAO)
+        Follow.objects.get_or_create(user=users[0], neighborhood=cu)
         self.stdout.write(self.style.SUCCESS("Dados de exemplo criados."))

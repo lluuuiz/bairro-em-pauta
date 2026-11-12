@@ -12,9 +12,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import services
-from .models import Confirmation, Event, Flag, Neighborhood, NewsItem, Reminder, Report, get_profile
+from .models import Confirmation, Event, Flag, Follow, Neighborhood, NewsItem, Notice, Reminder, Report, get_profile
 from .serializers import (
-    EventSerializer, MeSerializer, NeighborhoodSerializer, RegisterSerializer, ReportSerializer,
+    EventSerializer, MeSerializer, NeighborhoodSerializer, NoticeSerializer, RegisterSerializer, ReportSerializer,
 )
 
 User = get_user_model()
@@ -49,6 +49,32 @@ class NeighborhoodViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Neighborhood.objects.all()
     serializer_class = NeighborhoodSerializer
     permission_classes = [permissions.AllowAny]
+
+    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated])
+    def follow(self, request, pk=None):
+        """Segue ou deixa de seguir o bairro (para receber avisos de pauta)."""
+        hood = self.get_object()
+        existing = Follow.objects.filter(user=request.user, neighborhood=hood)
+        if existing.exists():
+            existing.delete()
+        else:
+            Follow.objects.create(user=request.user, neighborhood=hood)
+        return Response(self.get_serializer(hood).data)
+
+
+class NoticesView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        qs = Notice.objects.filter(user=request.user).select_related("news", "news__neighborhood")
+        return Response({
+            "unread": qs.filter(read=False).count(),
+            "items": NoticeSerializer(qs[:30], many=True).data,
+        })
+
+    def post(self, request):
+        Notice.objects.filter(user=request.user, read=False).update(read=True)
+        return Response({"unread": 0})
 
 
 class ReportViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
@@ -138,21 +164,28 @@ class MapItemsView(APIView):
         lat, lng = _float(request.query_params.get("lat")), _float(request.query_params.get("lng"))
         radius_m = (_float(request.query_params.get("radius_km")) or 2.0) * 1000
         only_verified = request.query_params.get("only_verified") == "1"
+        ids = [int(x) for x in request.query_params.get("neighborhoods", "").split(",") if x.isdigit()]
         items = []
 
-        for n in NewsItem.objects.select_related("neighborhood"):
+        news = NewsItem.objects.select_related("neighborhood").exclude(latitude=None)
+        reports = Report.objects.exclude(status=Report.DESCARTADO).select_related("neighborhood")
+        if ids:
+            news, reports = news.filter(neighborhood_id__in=ids), reports.filter(neighborhood_id__in=ids)
+
+        for n in news:
             items.append({
                 "type": n.kind, "id": n.id, "title": n.title, "category": n.category,
                 "neighborhood": n.neighborhood.name if n.neighborhood else "",
                 "latitude": n.latitude, "longitude": n.longitude, "live": n.is_live,
+                "program": n.program, "airs_at": n.airs_at,
                 "verification": "verificado", "created_at": n.published_at,
             })
-        reports = Report.objects.exclude(status=Report.DESCARTADO).select_related("neighborhood")
         for r in reports:
             items.append({
                 "type": "relato", "id": r.id, "title": r.title, "category": r.get_category_display(),
                 "neighborhood": r.neighborhood.name if r.neighborhood else "",
                 "latitude": r.latitude, "longitude": r.longitude, "live": False,
+                "program": "", "airs_at": None,
                 "verification": {Report.VERIFICADO: "verificado", Report.COMUNIDADE: "comunidade"}.get(r.status, "analise"),
                 "created_at": r.created_at,
             })
@@ -161,7 +194,7 @@ class MapItemsView(APIView):
         for it in items:
             if only_verified and it["verification"] == "analise":
                 continue
-            if lat is not None and lng is not None:
+            if lat is not None and lng is not None and not ids:
                 d = services.haversine_m(lat, lng, it["latitude"], it["longitude"])
                 if d > radius_m:
                     continue

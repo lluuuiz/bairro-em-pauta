@@ -2,15 +2,36 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from . import services
-from .models import Event, Neighborhood, Report, Reminder, get_profile
+from .models import Event, Follow, Neighborhood, Notice, Report, Reminder, get_profile
 
 User = get_user_model()
 
 
 class NeighborhoodSerializer(serializers.ModelSerializer):
+    followed = serializers.SerializerMethodField()
+
     class Meta:
         model = Neighborhood
-        fields = ["id", "name", "city", "latitude", "longitude"]
+        fields = ["id", "name", "city", "latitude", "longitude", "followed"]
+
+    def get_followed(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return False
+        return Follow.objects.filter(user=request.user, neighborhood=obj).exists()
+
+
+class NoticeSerializer(serializers.ModelSerializer):
+    title = serializers.CharField(source="news.title")
+    kind = serializers.CharField(source="news.kind")
+    program = serializers.CharField(source="news.program")
+    airs_at = serializers.DateTimeField(source="news.airs_at")
+    category = serializers.CharField(source="news.category")
+    neighborhood = serializers.CharField(source="news.neighborhood.name", default="")
+
+    class Meta:
+        model = Notice
+        fields = ["id", "read", "created_at", "title", "kind", "program", "airs_at", "category", "neighborhood"]
 
 
 class MeSerializer(serializers.ModelSerializer):
