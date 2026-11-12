@@ -1,0 +1,11 @@
+{
+  "name": "Bairro em Pauta",
+  "short_name": "Bairro em Pauta",
+  "description": "Tudo o que é noticiado sobre o seu bairro, com informação verificada.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f2ec",
+  "theme_color": "#2f6b69",
+  "lang": "pt-BR",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
