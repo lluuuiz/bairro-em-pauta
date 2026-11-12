@@ -5,7 +5,11 @@ export type Verification = "verificado" | "comunidade" | "analise";
 export type ReportStatus = "em_analise" | "comunidade" | "verificado" | "descartado";
 
 export interface Me { id: number; username: string; is_staff: boolean; reputation: number; level: number; level_label: string }
-export interface Neighborhood { id: number; name: string; city: string; latitude: number; longitude: number }
+export interface Neighborhood { id: number; name: string; city: string; latitude: number; longitude: number; followed: boolean }
+export interface Notice {
+  id: number; read: boolean; created_at: string; title: string; kind: string; program: string;
+  airs_at: string | null; category: string; neighborhood: string;
+}
 export interface Report {
   id: number; category: string; category_label: string; title: string; description: string; photo: string | null;
   latitude: number; longitude: number; neighborhood_name: string; status: ReportStatus; status_label: string;
@@ -15,6 +19,7 @@ export interface Report {
 export interface MapItem {
   type: "noticia" | "pauta" | "alerta" | "relato"; id: number; title: string; category: string; neighborhood: string;
   latitude: number; longitude: number; live: boolean; verification: Verification; created_at: string; distance_m?: number;
+  program?: string; airs_at?: string | null;
 }
 export interface EventItem {
   id: number; title: string; category: string; neighborhood_name: string; starts_at: string;
